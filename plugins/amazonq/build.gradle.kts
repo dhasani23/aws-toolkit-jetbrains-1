@@ -24,7 +24,24 @@ tasks.jar {
     from(changelog) {
         into("META-INF")
     }
+//    from("software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py") {
+//        into("pythonScript")
+//    }
 }
+
+//val codeTransformGradleScriptDirConfig = configurations.create("codeTransformGradleScriptDirConfig") {
+//    isCanBeResolved = false
+//}
+//
+//val codeTransformGradleScriptDir = tasks.register<Sync>("codeTransformGradleScriptDir") {
+//    from("software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py")
+//    into("$buildDir/$name")
+//    includeEmptyDirs = false
+//}
+//
+//artifacts {
+//    add(codeTransformGradleScriptDirConfig.name, codeTransformGradleScriptDir)
+//}
 
 dependencies {
     intellijPlatform {

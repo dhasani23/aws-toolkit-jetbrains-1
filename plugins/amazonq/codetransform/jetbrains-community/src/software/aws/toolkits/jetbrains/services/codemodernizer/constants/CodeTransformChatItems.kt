@@ -31,6 +31,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.ValidationR
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getModuleOrProjectNameForFile
 import software.aws.toolkits.jetbrains.services.cwc.clients.chat.model.FollowUpType
 import software.aws.toolkits.jetbrains.services.cwc.messages.FollowUp
+import software.aws.toolkits.jetbrains.utils.notifyStickyInfo
 import software.aws.toolkits.resources.message
 import software.aws.toolkits.telemetry.CodeTransformPreValidationError
 
@@ -48,8 +49,15 @@ private val confirmUserSelectionButton = Button(
     id = CodeTransformButtonId.StartTransformation.id,
 )
 
-private val openMvnBuildButton = Button(
-    id = CodeTransformButtonId.OpenMvnBuild.id,
+private val confirmBuildSystemSelectionButton = Button(
+    keepCardAfterClick = false,
+    waitMandatoryFormItems = true,
+    text = message("codemodernizer.chat.message.button.confirm"),
+    id = CodeTransformButtonId.ConfirmBuildSystem.id,
+)
+
+private val openLocalBuildButton = Button(
+    id = CodeTransformButtonId.OpenLocalBuild.id,
     text = message("codemodernizer.chat.message.button.view_build"),
     keepCardAfterClick = true,
 )
@@ -134,6 +142,22 @@ private val selectTargetVersionFormItem = FormItem(
     )
 )
 
+private val selectBuildSystemFormItem = FormItem(
+    id = CodeTransformFormItemId.SelectBuildSystem.id,
+    title = message("codemodernizer.chat.form.user_selection.item.choose_build_system"),
+    mandatory = true,
+    options = listOf(
+        FormItemOption(
+            label = "Maven",
+            value = "Maven",
+        ),
+        FormItemOption(
+            label = "Gradle",
+            value = "Gradle",
+        )
+    )
+)
+
 private fun getUserSelectionFormattedMarkdown(moduleName: String): String = """
         ### ${message("codemodernizer.chat.prompt.title.details")}
         -------------
@@ -142,6 +166,15 @@ private fun getUserSelectionFormattedMarkdown(moduleName: String): String = """
         | :------------------- | -------: |
         | **${message("codemodernizer.chat.prompt.label.module")}**             |   $moduleName   |
         | **${message("codemodernizer.chat.prompt.label.target_version")}** |  JDK17   |
+""".trimIndent()
+
+private fun getUserBuildSystemSelectionFormattedMarkdown(buildSystem: String): String = """
+        ### ${message("codemodernizer.chat.prompt.title.details")}
+        -------------
+
+        | | |
+        | :------------------- | -------: |
+        | **${message("codemodernizer.chat.prompt.label.build_system")}**             |   $buildSystem   |
 """.trimIndent()
 
 private fun getUserHilSelectionMarkdown(dependencyName: String, currentVersion: String, selectedVersion: String): String = """
@@ -184,15 +217,27 @@ fun buildStartNewTransformFollowup(): CodeTransformChatMessageContent = CodeTran
     )
 )
 
-fun buildAuthRestoredFollowup(): CodeTransformChatMessageContent = CodeTransformChatMessageContent(
-    type = CodeTransformChatMessageType.FinalizedAnswer,
-    followUps = listOf(
-        startNewTransformFollowUp
+fun buildUserInputBuildSystemChatContent(): CodeTransformChatMessageContent {
+    return CodeTransformChatMessageContent(
+        message = message("codemodernizer.chat.form.user_selection.title"),
+        buttons = listOf(
+            confirmBuildSystemSelectionButton,
+            cancelUserSelectionButton,
+        ),
+        formItems = listOf(selectBuildSystemFormItem),
+        type = CodeTransformChatMessageType.FinalizedAnswer,
     )
+}
+
+fun buildUserBuildSystemSelectionChatContent(buildSystem: String) = CodeTransformChatMessageContent(
+    type = CodeTransformChatMessageType.Prompt,
+    message = getUserBuildSystemSelectionFormattedMarkdown(buildSystem)
 )
 
 fun buildUserInputChatContent(project: Project, validationResult: ValidationResult): CodeTransformChatMessageContent {
     val moduleBuildFiles = validationResult.validatedBuildFiles
+
+    notifyStickyInfo("build files", "validated build files = ${validationResult.validatedBuildFiles}")
 
     return CodeTransformChatMessageContent(
         message = message("codemodernizer.chat.form.user_selection.title"),
@@ -237,18 +282,13 @@ fun buildCompileLocalInProgressChatContent() = CodeTransformChatMessageContent(
     type = CodeTransformChatMessageType.PendingAnswer,
     message = message("codemodernizer.chat.message.local_build_begin"),
     buttons = listOf(
-        openMvnBuildButton,
+        openLocalBuildButton,
     ),
 )
 
-fun buildCompileLocalFailedChatContent() = CodeTransformChatMessageContent(
+fun buildCompileLocalFailedChatContent(failureReason: String) = CodeTransformChatMessageContent(
     type = CodeTransformChatMessageType.FinalizedAnswer,
-    message = "${message(
-        "codemodernizer.chat.message.local_build_failed"
-    )}\n\n${message(
-        "codemodernizer.chat.message.validation.error.more_info",
-        CODE_TRANSFORM_TROUBLESHOOT_DOC_MVN_FAILURE
-    )}",
+    message = failureReason,
 )
 
 fun buildZipUploadFailedChatMessage(failureReason: UploadFailureReason): String {

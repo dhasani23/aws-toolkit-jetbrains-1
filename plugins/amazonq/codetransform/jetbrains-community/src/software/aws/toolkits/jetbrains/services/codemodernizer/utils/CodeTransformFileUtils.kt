@@ -52,7 +52,7 @@ fun filterOnlyParentFiles(filePaths: Set<VirtualFile>): List<VirtualFile> {
 }
 
 /**
- * @description For every directory, check if any supported build files (pom.xml etc) exists.
+ * @description For every directory, check if any supported build files (pom.xml, build.gradle, build.gradle.kts) exists.
  * If we find a valid build file, store it and stop further recursion.
  */
 fun findBuildFiles(sourceFolder: File, supportedBuildFileNames: List<String>): List<File> {
@@ -60,15 +60,15 @@ fun findBuildFiles(sourceFolder: File, supportedBuildFileNames: List<String>): L
     sourceFolder.walkTopDown()
         .maxDepth(5)
         .onEnter { currentDir ->
-            supportedBuildFileNames.forEach {
-                val maybeSupportedFile = currentDir.resolve(MAVEN_CONFIGURATION_FILE_NAME)
+            supportedBuildFileNames.forEach { buildFile ->
+                val maybeSupportedFile = currentDir.resolve(buildFile)
                 if (maybeSupportedFile.exists()) {
                     buildFiles.add(maybeSupportedFile)
                     return@onEnter false
                 }
             }
             return@onEnter true
-        }.forEach {
+        }.forEach { _ ->
             // noop, collects the sequence
         }
     return buildFiles

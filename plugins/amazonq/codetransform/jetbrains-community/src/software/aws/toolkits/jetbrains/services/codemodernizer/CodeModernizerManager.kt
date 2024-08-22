@@ -43,10 +43,12 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModerni
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeTransformHilDownloadArtifact
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CustomerSelection
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.Dependency
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_CONFIGURATION_FILE_NAME
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_KTS_CONFIGURATION_FILE_NAME
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.InvalidTelemetryReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.JobId
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.MAVEN_CONFIGURATION_FILE_NAME
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenDependencyReportCommandsResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.UploadFailureReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.ValidationResult
@@ -59,7 +61,6 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.toolwindow.CodeMo
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.STATES_WHERE_PLAN_EXIST
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.createFileCopy
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.findLineNumberByString
-import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getMavenVersion
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getModuleOrProjectNameForFile
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilArtifactPomFile
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilDependencyReport
@@ -78,6 +79,7 @@ import software.aws.toolkits.jetbrains.ui.feedback.CodeTransformFeedbackDialog
 import software.aws.toolkits.jetbrains.utils.isRunningOnRemoteBackend
 import software.aws.toolkits.jetbrains.utils.notifyStickyError
 import software.aws.toolkits.jetbrains.utils.notifyStickyInfo
+import software.aws.toolkits.jetbrains.utils.notifyStickyWarn
 import software.aws.toolkits.resources.message
 import software.aws.toolkits.telemetry.CodeTransformBuildSystem
 import software.aws.toolkits.telemetry.CodeTransformCancelSrcComponents
@@ -105,10 +107,10 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
             Disposer.register(contentManager, it)
         }
     }
-    private val supportedBuildFileNames = listOf(MAVEN_CONFIGURATION_FILE_NAME)
+    private val supportedBuildFileNames = listOf(MAVEN_CONFIGURATION_FILE_NAME, GRADLE_CONFIGURATION_FILE_NAME, GRADLE_KTS_CONFIGURATION_FILE_NAME)
     private val isModernizationInProgress = AtomicBoolean(false)
     private val isResumingJob = AtomicBoolean(false)
-    private val isMvnRunning = AtomicBoolean(false)
+    private val isLocalBuildRunning = AtomicBoolean(false)
     private val isJobSuccessfullyResumed = AtomicBoolean(false)
 
     private val transformationStoppedByUsr = AtomicBoolean(false)
@@ -180,8 +182,8 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
                     true,
                     validatedBuildFiles = validatedBuildFiles,
                     validatedProjectJdkName = projectJdk?.description.orEmpty(),
-                    buildSystem = CodeTransformBuildSystem.Maven,
-                    buildSystemVersion = getMavenVersion(project)
+                    // TO-DO: maybe add back the other two fields of ValidationResult
+                    // probably not since user has not selected a project at this point
                 )
             } else {
                 ValidationResult(
@@ -191,10 +193,10 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
                         supportedBuildFileNames.joinToString()
                     ),
                     invalidTelemetryReason = InvalidTelemetryReason(
+                        // TO-DO: make this NonMavenGradleProject?
                         CodeTransformPreValidationError.NonMavenProject,
                         if (isGradleProject(project)) "Gradle build" else "other build"
                     ),
-                    buildSystem = if (isGradleProject(project)) CodeTransformBuildSystem.Gradle else CodeTransformBuildSystem.Unknown
                 )
             }
         }
@@ -250,11 +252,11 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         }
     }
 
-    fun runModernize(copyResult: MavenCopyCommandsResult) {
+    fun runModernize(localBuildResult: LocalBuildResult) {
         initStopParameters()
         val session = codeTransformationSession as CodeModernizerSession
         initModernizationJobUI(true, project.getModuleOrProjectNameForFile(session.sessionContext.configurationFile))
-        launchModernizationJob(session, copyResult)
+        launchModernizationJob(session, localBuildResult)
     }
 
     suspend fun resumePollingFromHil() {
@@ -314,9 +316,8 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         )
     }
 
-    fun launchModernizationJob(session: CodeModernizerSession, copyResult: MavenCopyCommandsResult) = projectCoroutineScope(project).launch {
-        val result = initModernizationJob(session, copyResult)
-
+    fun launchModernizationJob(session: CodeModernizerSession, localBuildResult: LocalBuildResult) = projectCoroutineScope(project).launch {
+        val result = initModernizationJob(session, localBuildResult)
         postModernizationJob(result)
     }
 
@@ -364,22 +365,23 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
 
     fun isJobOngoingInState() = managerState.flags.getOrDefault(StateFlags.IS_ONGOING, false)
 
-    fun handleLocalMavenBuildResult(mavenCopyCommandsResult: MavenCopyCommandsResult) {
-        codeTransformationSession?.setLastMvnBuildResult(mavenCopyCommandsResult)
+    private fun handleLocalBuildResult(localBuildResult: LocalBuildResult) {
+        codeTransformationSession?.setLastLocalBuildResult(localBuildResult)
         // Send IDE notifications first
-        if (mavenCopyCommandsResult == MavenCopyCommandsResult.Failure) {
+        if (localBuildResult is LocalBuildResult.Failure) {
             notifyStickyInfo(
-                message("codemodernizer.notification.warn.maven_failed.title"),
-                message("codemodernizer.notification.warn.maven_failed.content"),
+                message("codemodernizer.notification.warn.local_build_failed.title"),
+                localBuildResult.failureReason,
                 project,
+                // TO-DO: maybe update URL once troubleshooting docs are updated
                 listOf(openTroubleshootingGuideNotificationAction(CODE_TRANSFORM_TROUBLESHOOT_DOC_MVN_FAILURE), displayFeedbackNotificationAction()),
             )
         }
 
-        CodeTransformMessageListener.instance.onMavenBuildResult(mavenCopyCommandsResult)
+        CodeTransformMessageListener.instance.onLocalBuildResult(localBuildResult)
     }
 
-    fun runLocalMavenBuild(project: Project, customerSelection: CustomerSelection) {
+    fun runLocalBuild(project: Project, customerSelection: CustomerSelection) {
         // TODO: deprecated metric - remove after BI started using new metric
         telemetry.jobStartedCompleteFromPopupDialog(customerSelection)
 
@@ -389,17 +391,17 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         codeTransformationSession = session
 
         projectCoroutineScope(project).launch {
-            isMvnRunning.set(true)
-            val result = session.getDependenciesUsingMaven()
-            isMvnRunning.set(false)
-            handleLocalMavenBuildResult(result)
+            isLocalBuildRunning.set(true)
+            val result = session.getDependencies()
+            isLocalBuildRunning.set(false)
+            handleLocalBuildResult(result)
         }
     }
 
     fun parseBuildFile(): String? = parseBuildFile(codeTransformationSession?.sessionContext?.configurationFile)
 
-    internal suspend fun initModernizationJob(session: CodeModernizerSession, copyResult: MavenCopyCommandsResult): CodeModernizerJobCompletedResult =
-        when (val result = session.createModernizationJob(copyResult)) {
+    internal suspend fun initModernizationJob(session: CodeModernizerSession, localBuildResult: LocalBuildResult): CodeModernizerJobCompletedResult =
+        when (val result = session.createModernizationJob(localBuildResult)) {
             is CodeModernizerStartJobResult.ZipCreationFailed -> {
                 CodeModernizerJobCompletedResult.UnableToCreateJob(
                     message("codemodernizer.notification.warn.zip_creation_failed", result.reason),
@@ -430,10 +432,6 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
 
             is CodeModernizerStartJobResult.Cancelled -> {
                 CodeModernizerJobCompletedResult.JobAbortedBeforeStarting
-            }
-
-            is CodeModernizerStartJobResult.CancelledMissingDependencies -> {
-                CodeModernizerJobCompletedResult.JobAbortedMissingDependencies
             }
 
             is CodeModernizerStartJobResult.CancelledZipTooLarge -> {
@@ -650,12 +648,6 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
 
             is CodeModernizerJobCompletedResult.ManagerDisposed -> LOG.warn { "Manager disposed" }
             is CodeModernizerJobCompletedResult.JobAbortedBeforeStarting -> LOG.warn { "Job was aborted" }
-            is CodeModernizerJobCompletedResult.JobAbortedMissingDependencies -> notifyStickyInfo(
-                message("codemodernizer.notification.warn.maven_failed.title"),
-                message("codemodernizer.notification.warn.maven_failed.content"),
-                project,
-                listOf(openTroubleshootingGuideNotificationAction(CODE_TRANSFORM_TROUBLESHOOT_DOC_MVN_FAILURE), displayFeedbackNotificationAction()),
-            )
             is CodeModernizerJobCompletedResult.JobAbortedZipTooLarge -> notifyStickyInfo(
                 message("codemodernizer.notification.warn.zip_too_large.title"),
                 message("codemodernizer.notification.warn.zip_too_large.content"),
@@ -716,11 +708,11 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
 
     fun isModernizationJobActive(): Boolean = isModernizationInProgress.get()
 
-    fun isRunningMvn(): Boolean = isMvnRunning.get()
+    fun isLocalBuildRunning(): Boolean = isLocalBuildRunning.get()
 
     fun isJobSuccessfullyResumed(): Boolean = isJobSuccessfullyResumed.get()
 
-    fun getLastMvnBuildResult(): MavenCopyCommandsResult? = codeTransformationSession?.getLastMvnBuildResult()
+    fun getLastLocalBuildResult(): LocalBuildResult? = codeTransformationSession?.getLastLocalBuildResult()
 
     fun getLastTransformResult(): CodeModernizerJobCompletedResult? = codeTransformationSession?.getLastTransformResult()
 
@@ -729,8 +721,8 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
     fun getBottomToolWindow() = ToolWindowManager.getInstance(project).getToolWindow(CodeModernizerBottomToolWindowFactory.id)
         ?: error(message("codemodernizer.toolwindow.problems_window_not_found"))
 
-    fun getMvnBuildWindow() = ToolWindowManager.getInstance(project).getToolWindow("Run")
-        ?: error(message("codemodernizer.toolwindow.problems_mvn_window_not_found"))
+    fun getLocalBuildWindow() = ToolWindowManager.getInstance(project).getToolWindow("Run")
+        ?: error(message("codemodernizer.toolwindow.problems_local_build_window_not_found"))
 
     override fun getState(): CodeModernizerState = CodeModernizerState().apply {
         lastJobContext.putAll(managerState.lastJobContext)
@@ -856,7 +848,7 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         }
     }
 
-    fun copyDependencyForHil(selectedVersion: String): MavenCopyCommandsResult {
+    fun copyDependencyForHil(selectedVersion: String): LocalBuildResult {
         try {
             val session = codeTransformationSession ?: throw CodeModernizerException("Cannot get the current session")
 
@@ -865,19 +857,19 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
 
             val downloadedPomPath = getPathToHilArtifactPomFile(tmpDirPath)
             if (!downloadedPomPath.exists()) {
-                return MavenCopyCommandsResult.Failure
+                return LocalBuildResult.Failure(message("codemodernizer.chat.message.hil.error.cannot_upload"))
             }
 
             val downloadedPomFile = File(downloadedPomPath.pathString)
             setDependencyVersionInPom(downloadedPomFile, selectedVersion)
 
-            val copyDependencyResult = session.copyHilDependencyUsingMaven()
-            return copyDependencyResult
+            val localBuildResult = session.copyHilDependencyUsingMaven()
+            return localBuildResult
         } catch (e: Exception) {
             val errorMessage = "Unexpected error when getting HIL dependency for upload: ${e.localizedMessage}"
             telemetry.error(errorMessage)
             LOG.error { errorMessage }
-            return MavenCopyCommandsResult.Failure
+            return LocalBuildResult.Failure(message("codemodernizer.chat.message.hil.error.cannot_upload"))
         }
     }
 
@@ -885,7 +877,7 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         try {
             val zipCreationResult = codeTransformationSession?.createHilUploadZip(selectedVersion)
             if (zipCreationResult?.payload?.exists() == true) {
-                codeTransformationSession?.uploadHilPayload(zipCreationResult.payload)
+                codeTransformationSession?.uploadHilPayload(zipCreationResult.payload!!)
 
                 // Add delay between upload complete and trying to resume
                 delay(500)

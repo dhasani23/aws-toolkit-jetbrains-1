@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModernizerJobCompletedResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.DownloadFailureReason
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
 
 class CodeTransformMessageListener {
 
@@ -26,8 +26,8 @@ class CodeTransformMessageListener {
         _messages.tryEmit(CodeTransformActionMessage(CodeTransformCommand.TransformStopped))
     }
 
-    fun onMavenBuildResult(result: MavenCopyCommandsResult) {
-        _messages.tryEmit(CodeTransformActionMessage(CodeTransformCommand.MavenBuildComplete, mavenBuildResult = result))
+    fun onLocalBuildResult(result: LocalBuildResult) {
+        _messages.tryEmit(CodeTransformActionMessage(CodeTransformCommand.LocalBuildComplete, localBuildResult = result))
     }
 
     fun onUploadResult() {

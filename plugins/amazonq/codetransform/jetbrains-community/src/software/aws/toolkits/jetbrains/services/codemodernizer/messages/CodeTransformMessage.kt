@@ -17,10 +17,11 @@ sealed interface CodeTransformBaseMessage : AmazonQMessage
 
 enum class CodeTransformButtonId(val id: String) {
     StartTransformation("codetransform-input-confirm"),
+    ConfirmBuildSystem("codetransform-input-confirm-build-system"),
     CancelTransformation("codetransform-input-cancel"),
     StopTransformation("stop_transform"),
     OpenTransformationHub("open_transformation_hub"),
-    OpenMvnBuild("open_mvn_build"),
+    OpenLocalBuild("open_local_build"),
     ViewDiff("view_diff"),
     ViewSummary("view_summary"),
     ViewBuildLog("view_build_log"),
@@ -32,6 +33,7 @@ enum class CodeTransformButtonId(val id: String) {
 enum class CodeTransformFormItemId(val id: String) {
     SelectModule("module"),
     SelectTargetVersion("targetVersion"),
+    SelectBuildSystem("buildSystem"),
     DependencyVersion("dependencyVersion"),
 }
 
@@ -73,6 +75,11 @@ sealed interface IncomingCodeTransformMessage : CodeTransformBaseMessage {
         val targetVersion: String,
     ) : IncomingCodeTransformMessage
 
+    data class CodeTransformConfirmBuildSystem(
+        @JsonProperty("tabID") val tabId: String,
+        val buildSystem: String,
+    ) : IncomingCodeTransformMessage
+
     data class CodeTransformStop(
         @JsonProperty("tabID") val tabId: String,
     ) : IncomingCodeTransformMessage
@@ -81,7 +88,7 @@ sealed interface IncomingCodeTransformMessage : CodeTransformBaseMessage {
         @JsonProperty("tabID") val tabId: String,
     ) : IncomingCodeTransformMessage
 
-    data class CodeTransformOpenMvnBuild(
+    data class CodeTransformOpenLocalBuild(
         @JsonProperty("tabID") val tabId: String,
     ) : IncomingCodeTransformMessage
 

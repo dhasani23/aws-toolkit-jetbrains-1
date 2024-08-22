@@ -51,8 +51,10 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildTr
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildTransformResumingChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildTransformStoppedChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildTransformStoppingChatContent
+import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserBuildSystemSelectionChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserCancelledChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserHilSelection
+import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserInputBuildSystemChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserInputChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserSelectionSummaryChatContent
 import software.aws.toolkits.jetbrains.services.codemodernizer.constants.buildUserStopTransformChatContent
@@ -64,8 +66,12 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModerni
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeTransformHilDownloadArtifact
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CustomerSelection
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.DownloadFailureReason
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_CONFIGURATION_FILE_NAME
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_KTS_CONFIGURATION_FILE_NAME
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.JobId
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.MAVEN_BUILD_SYSTEM
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.MAVEN_CONFIGURATION_FILE_NAME
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenDependencyReportCommandsResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.UploadFailureReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.panels.managers.CodeModernizerBottomWindowPanelManager
@@ -77,6 +83,8 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.utils.isCodeTrans
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.toVirtualFile
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.tryGetJdk
 import software.aws.toolkits.jetbrains.services.cwc.messages.ChatMessageType
+import software.aws.toolkits.jetbrains.utils.notifyStickyInfo
+import software.aws.toolkits.jetbrains.utils.notifyStickyWarn
 import software.aws.toolkits.resources.message
 import software.aws.toolkits.telemetry.CodeTransformVCSViewerSrcComponents
 
@@ -90,6 +98,7 @@ class CodeTransformChatController(
     private val codeTransformChatHelper = CodeTransformChatHelper(context.messagesFromAppToUi, chatSessionStorage)
     private val artifactHandler = ArtifactHandler(context.project, GumbyClient.getInstance(context.project))
     private val telemetry = CodeTransformTelemetryManager.getInstance(context.project)
+    private var configurationFile: VirtualFile? = null
 
     override suspend fun processTransformQuickAction(message: IncomingCodeTransformMessage.Transform) {
         telemetry.prepareForNewJobSubmission()
@@ -144,14 +153,14 @@ class CodeTransformChatController(
 
     suspend fun tryRestoreChatProgress(): Boolean {
         val isTransformOngoing = codeModernizerManager.isModernizationJobActive()
-        val isMvnRunning = codeModernizerManager.isRunningMvn()
+        val isLocalBuildRunning = codeModernizerManager.isLocalBuildRunning()
 
         while (codeModernizerManager.isModernizationJobResuming()) {
             // Poll until transformation is resumed
             delay(50)
         }
 
-        if (isMvnRunning) {
+        if (isLocalBuildRunning) {
             codeTransformChatHelper.addNewMessage(buildCompileLocalInProgressChatContent())
             return true
         }
@@ -174,10 +183,10 @@ class CodeTransformChatController(
             return true
         }
 
-        val lastMvnBuildResult = codeModernizerManager.getLastMvnBuildResult()
-        if (lastMvnBuildResult != null) {
+        val lastLocalBuildResult = codeModernizerManager.getLastLocalBuildResult()
+        if (lastLocalBuildResult != null) {
             codeTransformChatHelper.addNewMessage(buildCompileLocalInProgressChatContent())
-            handleMavenBuildResult(lastMvnBuildResult)
+            handleLocalBuildResult(lastLocalBuildResult)
             return true
         }
 
@@ -199,6 +208,43 @@ class CodeTransformChatController(
         }
     }
 
+    // runs on projects that contain both a pom.xml and a build.gradle / build.gradle.kts
+    override suspend fun processCodeTransformConfirmBuildSystem(message: IncomingCodeTransformMessage.CodeTransformConfirmBuildSystem) {
+        // configurationFile should never be null here
+        val moduleConfigurationFile = getConfigurationFile(message.buildSystem) ?: throw RuntimeException("No configuration file")
+        val sourceJdk = getSourceJdk(moduleConfigurationFile)
+        val selection = CustomerSelection(
+            moduleConfigurationFile,
+            sourceJdk,
+            JavaSdkVersion.JDK_17
+        )
+        codeTransformChatHelper.addNewMessage(buildUserBuildSystemSelectionChatContent(message.buildSystem))
+        startBuild(selection)
+    }
+
+    // only used in the rare case where a project uses both a pom.xml and a build.gradle / build.gradle.kts
+    // the pom.xml will be detected and saved, so handle the Gradle case here
+    private fun getConfigurationFile(buildSystem: String): VirtualFile? {
+        if (buildSystem.lowercase() == MAVEN_BUILD_SYSTEM) {
+            // just return the global configurationFile since that points to the pom.xml
+            return configurationFile
+        }
+        // else, must be a Gradle project
+        val parentDir = configurationFile?.parent ?: return null
+
+        val buildGradleFile = parentDir.findChild(GRADLE_CONFIGURATION_FILE_NAME)
+        if (buildGradleFile != null) {
+            return buildGradleFile
+        }
+
+        val buildGradleKtsFile = parentDir.findChild(GRADLE_KTS_CONFIGURATION_FILE_NAME)
+        if (buildGradleKtsFile != null) {
+            return buildGradleKtsFile
+        }
+
+        return null
+    }
+
     override suspend fun processCodeTransformStartAction(message: IncomingCodeTransformMessage.CodeTransformStart) {
         if (!checkForAuth(message.tabId)) {
             telemetry.submitSelection("Confirm", null, "User is not authenticated")
@@ -207,38 +253,53 @@ class CodeTransformChatController(
 
         val (tabId, modulePath, targetVersion) = message
 
-        val moduleVirtualFile: VirtualFile = modulePath.toVirtualFile() as VirtualFile
-        val moduleName = context.project.getModuleOrProjectNameForFile(moduleVirtualFile)
+        val moduleConfigurationFile: VirtualFile = modulePath.toVirtualFile() as VirtualFile
+        configurationFile = modulePath.toVirtualFile() as VirtualFile
+        val moduleName = context.project.getModuleOrProjectNameForFile(moduleConfigurationFile)
 
-        codeTransformChatHelper.run {
-            addNewMessage(buildUserSelectionSummaryChatContent(moduleName))
-            addNewMessage(buildCompileLocalInProgressChatContent())
+        codeTransformChatHelper.addNewMessage(buildUserSelectionSummaryChatContent(moduleName))
+
+        val sourceJdk = getSourceJdk(moduleConfigurationFile)
+
+        notifyStickyWarn("Build File", "moduleConfigurationFile = ${moduleConfigurationFile.path}")
+
+        // (rare) if a module has both a pom.xml and a build.gradle / build.gradle.kts, just the pom.xml will be detected up until here
+        // so, check if a build.gradle / build.gradle.kts is present next to the pom.xml, and if so, ask the user what build system to use
+        if (moduleConfigurationFile.name == MAVEN_CONFIGURATION_FILE_NAME &&
+            moduleConfigurationFile.parent.children.any { it.name == "build.gradle" || it.name == "build.gradle.kts" }) {
+            notifyStickyInfo("Maven & Gradle found", "This project has a pom.xml and a build.gradle / build.gradle.kts")
+            codeTransformChatHelper.addNewMessage(buildUserInputBuildSystemChatContent())
+            return
         }
-
-        // this should never throw the RuntimeException since invalid JDK case is already handled in previous validation step
-        val moduleJdkVersion = ModuleUtil.findModuleForFile(moduleVirtualFile, context.project)?.tryGetJdk(context.project)
-        logger.info { "Found project JDK version: ${context.project.tryGetJdk()}, module JDK version: $moduleJdkVersion. Module JDK version prioritized." }
-        val sourceJdk = moduleJdkVersion ?: context.project.tryGetJdk() ?: throw RuntimeException("Unable to determine source JDK version")
-
         val selection = CustomerSelection(
-            moduleVirtualFile,
+            moduleConfigurationFile,
             sourceJdk,
             JavaSdkVersion.JDK_17
         )
-
-        // Publish metric to capture user selection before local build starts
-        telemetry.submitSelection("Confirm", selection)
-
-        codeModernizerManager.runLocalMavenBuild(context.project, selection)
+        startBuild(selection)
     }
 
-    private suspend fun handleMavenBuildResult(mavenBuildResult: MavenCopyCommandsResult) {
-        if (mavenBuildResult == MavenCopyCommandsResult.Cancelled) {
+    private fun getSourceJdk(moduleConfigurationFile: VirtualFile): JavaSdkVersion {
+        // this should never throw the RuntimeException since invalid JDK case is already handled in previous validation step
+        val moduleJdkVersion = ModuleUtil.findModuleForFile(moduleConfigurationFile, context.project)?.tryGetJdk(context.project)
+        logger.info { "Found project JDK version: ${context.project.tryGetJdk()}, module JDK version: $moduleJdkVersion. Module JDK version prioritized." }
+        val sourceJdk = moduleJdkVersion ?: context.project.tryGetJdk() ?: throw RuntimeException("Unable to determine source JDK version")
+        return sourceJdk
+    }
+
+    private suspend fun startBuild(selection: CustomerSelection) {
+        telemetry.submitSelection("Confirm", selection)
+        codeTransformChatHelper.addNewMessage(buildCompileLocalInProgressChatContent())
+        codeModernizerManager.runLocalBuild(context.project, selection)
+    }
+
+    private suspend fun handleLocalBuildResult(localBuildResult: LocalBuildResult) {
+        if (localBuildResult == LocalBuildResult.Cancelled) {
             codeTransformChatHelper.updateLastPendingMessage(buildUserCancelledChatContent())
             codeTransformChatHelper.addNewMessage(buildStartNewTransformFollowup())
             return
-        } else if (mavenBuildResult == MavenCopyCommandsResult.Failure) {
-            codeTransformChatHelper.updateLastPendingMessage(buildCompileLocalFailedChatContent())
+        } else if (localBuildResult is LocalBuildResult.Failure) {
+            codeTransformChatHelper.updateLastPendingMessage(buildCompileLocalFailedChatContent(localBuildResult.failureReason))
             codeTransformChatHelper.addNewMessage(buildStartNewTransformFollowup())
             return
         }
@@ -257,8 +318,9 @@ class CodeTransformChatController(
             // swallow error and move on
         }
 
+        // local build must have been successful here
         runInEdt {
-            codeModernizerManager.runModernize(mavenBuildResult)
+            codeModernizerManager.runModernize(localBuildResult)
         }
     }
 
@@ -286,9 +348,9 @@ class CodeTransformChatController(
         }
     }
 
-    override suspend fun processCodeTransformOpenMvnBuild(message: IncomingCodeTransformMessage.CodeTransformOpenMvnBuild) {
+    override suspend fun processCodeTransformOpenLocalBuild(message: IncomingCodeTransformMessage.CodeTransformOpenLocalBuild) {
         runInEdt {
-            codeModernizerManager.getMvnBuildWindow().show()
+            codeModernizerManager.getLocalBuildWindow().show()
         }
     }
 
@@ -367,10 +429,10 @@ class CodeTransformChatController(
                 messagePublisher.publish(CodeTransformCommandMessage(command = "stop"))
                 processCodeTransformStopAction(activeTabId)
             }
-            CodeTransformCommand.MavenBuildComplete -> {
-                val result = message.mavenBuildResult
+            CodeTransformCommand.LocalBuildComplete -> {
+                val result = message.localBuildResult
                 if (result != null) {
-                    handleMavenBuildResult(result)
+                    handleLocalBuildResult(result)
                 }
             }
             CodeTransformCommand.UploadComplete -> handleCodeTransformUploadCompleted()
@@ -584,11 +646,11 @@ class CodeTransformChatController(
             addNewMessage(buildCompileHilAlternativeVersionContent())
         }
 
-        val copyDependencyResult = codeModernizerManager.copyDependencyForHil(selectedVersion)
-        if (copyDependencyResult == MavenCopyCommandsResult.Failure) {
-            hilTryResumeAfterError(message("codemodernizer.chat.message.hil.error.cannot_upload"))
+        val localBuildResult = codeModernizerManager.copyDependencyForHil(selectedVersion)
+        if (localBuildResult is LocalBuildResult.Failure) {
+            hilTryResumeAfterError(localBuildResult.failureReason)
             return
-        } else if (copyDependencyResult == MavenCopyCommandsResult.Cancelled) {
+        } else if (localBuildResult == LocalBuildResult.Cancelled) {
             hilTryResumeAfterError(message("codemodernizer.chat.message.hil.error.cancel_upload"))
             return
         }

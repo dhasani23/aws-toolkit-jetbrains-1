@@ -12,8 +12,9 @@ import org.slf4j.Logger
 import software.aws.toolkits.core.utils.error
 import software.aws.toolkits.core.utils.info
 import software.aws.toolkits.jetbrains.services.codemodernizer.CodeTransformTelemetryManager
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenDependencyReportCommandsResult
+import software.aws.toolkits.resources.message
 import software.aws.toolkits.telemetry.CodeTransformBuildCommand
 import software.aws.toolkits.telemetry.CodeTransformMavenBuildCommand
 import software.aws.toolkits.telemetry.Result
@@ -30,10 +31,10 @@ private fun emitMavenFailure(error: String, logger: Logger, telemetry: CodeTrans
 fun runHilMavenCopyDependency(
     sourceFolder: File,
     destinationDir: File,
-    buildlogBuilder: StringBuilder,
+    buildLogBuilder: StringBuilder,
     logger: Logger,
     project: Project
-): MavenCopyCommandsResult {
+): LocalBuildResult {
     val telemetry = CodeTransformTelemetryManager.getInstance(project)
     logger.info { "Executing IntelliJ bundled Maven" }
     try {
@@ -43,27 +44,27 @@ fun runHilMavenCopyDependency(
 
         // run copy dependencies
         val copyDependenciesRunnable =
-            runMavenCopyDependencies(sourceFolder, buildlogBuilder, mvnSettings, transformMvnRunner, destinationDir.toPath(), logger, telemetry)
+            runMavenCopyDependencies(sourceFolder, buildLogBuilder, mvnSettings, transformMvnRunner, destinationDir.toPath(), logger, telemetry)
         copyDependenciesRunnable.await()
-        buildlogBuilder.appendLine(copyDependenciesRunnable.getOutput())
+        buildLogBuilder.appendLine(copyDependenciesRunnable.getOutput())
         if (copyDependenciesRunnable.isComplete()) {
             val successMsg = "IntelliJ IDEA bundled Maven copy-dependencies executed successfully"
             logger.info { successMsg }
-            buildlogBuilder.appendLine(successMsg)
+            buildLogBuilder.appendLine(successMsg)
         } else if (copyDependenciesRunnable.isTerminated()) {
-            return MavenCopyCommandsResult.Cancelled
+            return LocalBuildResult.Cancelled
         } else {
             // TODO: deprecated metric - remove after BI started using new metric
             emitMavenFailure("Maven Copy: bundled Maven failed: exitCode ${copyDependenciesRunnable.isComplete()}", logger, telemetry)
         }
     } catch (t: Throwable) {
-        return MavenCopyCommandsResult.Failure
+        return LocalBuildResult.Failure(message("codemodernizer.notification.warn.maven_failed.content"))
     }
     // When all commands executed successfully, show the transformation hub
-    return MavenCopyCommandsResult.Success(destinationDir)
+    return LocalBuildResult.Success(destinationDir)
 }
 
-fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, logger: Logger, project: Project): MavenCopyCommandsResult {
+fun runMavenCopyCommands(sourceFolder: File, buildLogBuilder: StringBuilder, logger: Logger, project: Project): LocalBuildResult {
     val currentTimestamp = System.currentTimeMillis()
     val destinationDir = Files.createTempDirectory("transformation_dependencies_temp_$currentTimestamp")
     val telemetry = CodeTransformTelemetryManager.getInstance(project)
@@ -78,16 +79,16 @@ fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, log
 
         // run copy dependencies
         val copyDependenciesRunnable =
-            runMavenCopyDependencies(sourceFolder, buildlogBuilder, mvnSettings, transformMvnRunner, destinationDir, logger, telemetry)
+            runMavenCopyDependencies(sourceFolder, buildLogBuilder, mvnSettings, transformMvnRunner, destinationDir, logger, telemetry)
         copyDependenciesRunnable.await()
-        buildlogBuilder.appendLine(copyDependenciesRunnable.getOutput())
+        buildLogBuilder.appendLine(copyDependenciesRunnable.getOutput())
         if (copyDependenciesRunnable.isComplete()) {
             val successMsg = "IntelliJ IDEA bundled Maven copy-dependencies executed successfully"
             logger.info { successMsg }
-            buildlogBuilder.appendLine(successMsg)
+            buildLogBuilder.appendLine(successMsg)
         } else if (copyDependenciesRunnable.isTerminated()) {
             telemetryLocalBuildResult = Result.Cancelled
-            return MavenCopyCommandsResult.Cancelled
+            return LocalBuildResult.Cancelled
         } else {
             telemetryErrorMessage += "Maven Copy: bundled Maven failed. "
 
@@ -96,16 +97,16 @@ fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, log
         }
 
         // Run clean
-        val cleanRunnable = runMavenClean(sourceFolder, buildlogBuilder, mvnSettings, transformMvnRunner, logger, telemetry, destinationDir)
+        val cleanRunnable = runMavenClean(sourceFolder, buildLogBuilder, mvnSettings, transformMvnRunner, logger, telemetry, destinationDir)
         cleanRunnable.await()
-        buildlogBuilder.appendLine(cleanRunnable.getOutput())
+        buildLogBuilder.appendLine(cleanRunnable.getOutput())
         if (cleanRunnable.isComplete()) {
             val successMsg = "IntelliJ bundled Maven clean executed successfully"
             logger.info { successMsg }
-            buildlogBuilder.appendLine(successMsg)
+            buildLogBuilder.appendLine(successMsg)
         } else if (cleanRunnable.isTerminated()) {
             telemetryLocalBuildResult = Result.Cancelled
-            return MavenCopyCommandsResult.Cancelled
+            return LocalBuildResult.Cancelled
         } else {
             telemetryErrorMessage += "Maven Clean: bundled Maven failed."
 
@@ -113,20 +114,20 @@ fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, log
             emitMavenFailure("Maven Clean: bundled Maven failed: exitCode ${cleanRunnable.isComplete()}", logger, telemetry)
 
             telemetryLocalBuildResult = Result.Failed
-            return MavenCopyCommandsResult.Failure
+            return LocalBuildResult.Failure(message("codemodernizer.notification.warn.maven_failed.content"))
         }
 
         // Run install
-        val installRunnable = runMavenInstall(sourceFolder, buildlogBuilder, mvnSettings, transformMvnRunner, logger, telemetry, destinationDir)
+        val installRunnable = runMavenInstall(sourceFolder, buildLogBuilder, mvnSettings, transformMvnRunner, logger, telemetry, destinationDir)
         installRunnable.await()
-        buildlogBuilder.appendLine(installRunnable.getOutput())
+        buildLogBuilder.appendLine(installRunnable.getOutput())
         if (installRunnable.isComplete()) {
             val successMsg = "IntelliJ bundled Maven install executed successfully"
             logger.info { successMsg }
-            buildlogBuilder.appendLine(successMsg)
+            buildLogBuilder.appendLine(successMsg)
         } else if (installRunnable.isTerminated()) {
             telemetryLocalBuildResult = Result.Cancelled
-            return MavenCopyCommandsResult.Cancelled
+            return LocalBuildResult.Cancelled
         } else {
             telemetryErrorMessage += "Maven Install: bundled Maven failed."
 
@@ -134,7 +135,7 @@ fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, log
             emitMavenFailure("Maven Install: bundled Maven failed: exitCode ${installRunnable.isComplete()}", logger, telemetry)
 
             telemetryLocalBuildResult = Result.Failed
-            return MavenCopyCommandsResult.Failure
+            return LocalBuildResult.Failure(message("codemodernizer.notification.warn.maven_failed.content"))
         }
     } catch (t: Throwable) {
         // TODO: deprecated metric - remove after BI started using new metric
@@ -144,13 +145,13 @@ fun runMavenCopyCommands(sourceFolder: File, buildlogBuilder: StringBuilder, log
         logger.error(t) { errorMessage }
         telemetryErrorMessage = errorMessage
         telemetryLocalBuildResult = Result.Failed
-        return MavenCopyCommandsResult.Failure
+        return LocalBuildResult.Failure(message("codemodernizer.notification.warn.maven_failed.content"))
     } finally {
         // emit telemetry
         telemetry.localBuildProject(CodeTransformBuildCommand.IDEBundledMaven, telemetryLocalBuildResult, telemetryErrorMessage)
     }
     // When all commands executed successfully, show the transformation hub
-    return MavenCopyCommandsResult.Success(destinationDir.toFile())
+    return LocalBuildResult.Success(destinationDir.toFile())
 }
 
 private fun runMavenCopyDependencies(

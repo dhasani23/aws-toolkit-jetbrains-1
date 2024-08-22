@@ -26,6 +26,8 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.messages.Incoming
 import software.aws.toolkits.jetbrains.services.codemodernizer.session.ChatSessionStorage
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getQTokenProvider
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.isCodeTransformAvailable
+import software.aws.toolkits.jetbrains.utils.notifyStickyInfo
+import software.aws.toolkits.jetbrains.utils.notifyStickyWarn
 import java.util.concurrent.atomic.AtomicBoolean
 
 private enum class CodeTransformMessageTypes(val type: String) {
@@ -33,11 +35,12 @@ private enum class CodeTransformMessageTypes(val type: String) {
     TabRemoved("tab-was-removed"),
     Transform("transform"),
     CodeTransformStart("codetransform-start"),
+    CodeTransformConfirmBuildSystem("codetransform-confirm-build-system"),
     CodeTransformStop("codetransform-stop"),
     CodeTransformCancel("codetransform-cancel"),
     CodeTransformNew("codetransform-new"),
     CodeTransformOpenTransformHub("codetransform-open-transform-hub"),
-    CodeTransformOpenMvnBuild("codetransform-open-mvn-build"),
+    CodeTransformOpenLocalBuild("codetransform-open-local-build"),
     ViewDiff("codetransform-view-diff"),
     ViewSummary("codetransform-view-summary"),
     ViewBuildLog("codetransform-view-build-log"),
@@ -62,11 +65,12 @@ class CodeTransformChatApp : AmazonQApp {
             CodeTransformMessageTypes.TabRemoved.type to IncomingCodeTransformMessage.TabRemoved::class,
             CodeTransformMessageTypes.Transform.type to IncomingCodeTransformMessage.Transform::class,
             CodeTransformMessageTypes.CodeTransformStart.type to IncomingCodeTransformMessage.CodeTransformStart::class,
+            CodeTransformMessageTypes.CodeTransformConfirmBuildSystem.type to IncomingCodeTransformMessage.CodeTransformConfirmBuildSystem::class,
             CodeTransformMessageTypes.CodeTransformStop.type to IncomingCodeTransformMessage.CodeTransformStop::class,
             CodeTransformMessageTypes.CodeTransformCancel.type to IncomingCodeTransformMessage.CodeTransformCancel::class,
             CodeTransformMessageTypes.CodeTransformNew.type to IncomingCodeTransformMessage.CodeTransformNew::class,
             CodeTransformMessageTypes.CodeTransformOpenTransformHub.type to IncomingCodeTransformMessage.CodeTransformOpenTransformHub::class,
-            CodeTransformMessageTypes.CodeTransformOpenMvnBuild.type to IncomingCodeTransformMessage.CodeTransformOpenMvnBuild::class,
+            CodeTransformMessageTypes.CodeTransformOpenLocalBuild.type to IncomingCodeTransformMessage.CodeTransformOpenLocalBuild::class,
             CodeTransformMessageTypes.ViewDiff.type to IncomingCodeTransformMessage.CodeTransformViewDiff::class,
             CodeTransformMessageTypes.ViewSummary.type to IncomingCodeTransformMessage.CodeTransformViewSummary::class,
             CodeTransformMessageTypes.ViewBuildLog.type to IncomingCodeTransformMessage.CodeTransformViewBuildLog::class,
@@ -148,14 +152,16 @@ class CodeTransformChatApp : AmazonQApp {
     }
 
     private suspend fun handleMessage(message: AmazonQMessage, inboundAppMessagesHandler: InboundAppMessagesHandler) {
+        notifyStickyInfo("message info", "message = $message")
         when (message) {
             is IncomingCodeTransformMessage.Transform -> inboundAppMessagesHandler.processTransformQuickAction(message)
             is IncomingCodeTransformMessage.CodeTransformStart -> inboundAppMessagesHandler.processCodeTransformStartAction(message)
+            is IncomingCodeTransformMessage.CodeTransformConfirmBuildSystem -> inboundAppMessagesHandler.processCodeTransformConfirmBuildSystem(message)
             is IncomingCodeTransformMessage.CodeTransformCancel -> inboundAppMessagesHandler.processCodeTransformCancelAction(message)
             is IncomingCodeTransformMessage.CodeTransformStop -> inboundAppMessagesHandler.processCodeTransformStopAction(message.tabId)
             is IncomingCodeTransformMessage.CodeTransformNew -> inboundAppMessagesHandler.processCodeTransformNewAction(message)
             is IncomingCodeTransformMessage.CodeTransformOpenTransformHub -> inboundAppMessagesHandler.processCodeTransformOpenTransformHub(message)
-            is IncomingCodeTransformMessage.CodeTransformOpenMvnBuild -> inboundAppMessagesHandler.processCodeTransformOpenMvnBuild(message)
+            is IncomingCodeTransformMessage.CodeTransformOpenLocalBuild -> inboundAppMessagesHandler.processCodeTransformOpenLocalBuild(message)
             is IncomingCodeTransformMessage.CodeTransformViewDiff -> inboundAppMessagesHandler.processCodeTransformViewDiff(message)
             is IncomingCodeTransformMessage.CodeTransformViewSummary -> inboundAppMessagesHandler.processCodeTransformViewSummary(message)
             is IncomingCodeTransformMessage.CodeTransformViewBuildLog -> inboundAppMessagesHandler.processCodeTransformViewBuildLog(message)

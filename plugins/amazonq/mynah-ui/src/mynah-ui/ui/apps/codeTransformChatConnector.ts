@@ -205,17 +205,22 @@ export class CodeTransformChatConnector {
                 modulePath: action.formItemValues?.module,
                 targetVersion: 'Java 17',
             })
+        } else if (action.id === FormButtonIds.CodeTransformInputConfirmBuildSystem) {
+            this.sendMessageToExtension({
+                command: 'codetransform-confirm-build-system',
+                tabID,
+                tabType: 'codetransform',
+                buildSystem: action.formItemValues?.buildSystem
+            })
         } else if (action.id === FormButtonIds.CodeTransformInputCancel) {
             this.sendMessageToExtension({
                 command: 'codetransform-cancel',
                 tabID,
                 tabType: 'codetransform',
             })
-        } else if (action.id === FormButtonIds.OpenMvnBuild) {
-            console.log('open_mvn_build')
-
+        } else if (action.id === FormButtonIds.OpenLocalBuild) {
             this.sendMessageToExtension({
-                command: 'codetransform-open-mvn-build',
+                command: 'codetransform-open-local-build',
                 tabID,
                 tabType: 'codetransform',
             })

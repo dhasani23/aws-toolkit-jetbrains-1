@@ -182,7 +182,6 @@ class CodeModernizerBottomWindowPanelManager(private val project: Project) : JPa
                 is CodeModernizerJobCompletedResult.UnableToCreateJob,
                 is CodeModernizerJobCompletedResult.ZipUploadFailed,
                 is CodeModernizerJobCompletedResult.JobAbortedZipTooLarge,
-                is CodeModernizerJobCompletedResult.JobAbortedMissingDependencies -> setJobFailedToStartUI()
 
                 is CodeModernizerJobCompletedResult.RetryableFailure,
                 is CodeModernizerJobCompletedResult.JobFailedInitialBuild,

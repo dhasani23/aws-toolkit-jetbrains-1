@@ -21,6 +21,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.utils.tryGetJdk
 import software.aws.toolkits.telemetry.CodeTransformApiNames
 import software.aws.toolkits.telemetry.CodeTransformArtifactType
 import software.aws.toolkits.telemetry.CodeTransformBuildCommand
+import software.aws.toolkits.telemetry.CodeTransformBuildSystem
 import software.aws.toolkits.telemetry.CodeTransformCancelSrcComponents
 import software.aws.toolkits.telemetry.CodeTransformJavaSourceVersionsAllowed
 import software.aws.toolkits.telemetry.CodeTransformJavaTargetVersionsAllowed
@@ -142,6 +143,7 @@ class CodeTransformTelemetryManager(private val project: Project) {
         )
     }
 
+    // TODO: deprecated metric - remove after BI started using new metric
     fun mvnBuildFailed(mavenBuildCommand: CodeTransformMavenBuildCommand, error: String) {
         CodetransformTelemetry.mvnBuildFailed(
             codeTransformSessionId = sessionId,
@@ -177,10 +179,9 @@ class CodeTransformTelemetryManager(private val project: Project) {
         }
 
         CodetransformTelemetry.validateProject(
-            buildSystemVersion = validationResult.buildSystemVersion,
             codeTransformLocalJavaVersion = project.tryGetJdk().toString(),
             codeTransformPreValidationError = validationError,
-            codeTransformBuildSystem = validationResult.buildSystem,
+            codeTransformBuildSystem = CodeTransformBuildSystem.Unknown,
             codeTransformSessionId = sessionId,
             result = if (validationResult.valid) Result.Succeeded else Result.Failed,
             reason = if (validationResult.valid) null else validationResult.invalidTelemetryReason.additonalInfo,

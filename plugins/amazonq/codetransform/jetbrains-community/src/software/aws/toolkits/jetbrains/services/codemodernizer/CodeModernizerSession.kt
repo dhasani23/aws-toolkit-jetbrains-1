@@ -34,7 +34,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModerni
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeTransformHilDownloadArtifact
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.DownloadArtifactResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.JobId
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenDependencyReportCommandsResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.UploadFailureReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.ZipCreationResult
@@ -84,7 +84,7 @@ class CodeModernizerSession(
     private val telemetry = CodeTransformTelemetryManager.getInstance(sessionContext.project)
     private val artifactHandler = ArtifactHandler(sessionContext.project, GumbyClient.getInstance(sessionContext.project))
 
-    private var mvnBuildResult: MavenCopyCommandsResult? = null
+    private var localBuildResult: LocalBuildResult? = null
     private var transformResult: CodeModernizerJobCompletedResult? = null
 
     private var hilDownloadArtifactId: String? = null
@@ -108,10 +108,10 @@ class CodeModernizerSession(
     fun setHilTempDirectoryPath(path: Path) {
         hilTempDirectoryPath = path
     }
-    fun getLastMvnBuildResult(): MavenCopyCommandsResult? = mvnBuildResult
+    fun getLastLocalBuildResult(): LocalBuildResult? = localBuildResult
 
-    fun setLastMvnBuildResult(result: MavenCopyCommandsResult) {
-        mvnBuildResult = result
+    fun setLastLocalBuildResult(result: LocalBuildResult) {
+        localBuildResult = result
     }
 
     fun getLastTransformResult(): CodeModernizerJobCompletedResult? = transformResult
@@ -120,13 +120,13 @@ class CodeModernizerSession(
         transformResult = result
     }
 
-    fun getDependenciesUsingMaven(): MavenCopyCommandsResult = sessionContext.getDependenciesUsingMaven()
+    fun getDependencies(): LocalBuildResult = sessionContext.getDependencies()
 
     fun createHilDependencyReportUsingMaven(): MavenDependencyReportCommandsResult = sessionContext.createDependencyReportUsingMaven(
         getPathToHilDependencyReportDir(hilTempDirectoryPath as Path)
     )
 
-    fun copyHilDependencyUsingMaven(): MavenCopyCommandsResult = sessionContext.copyHilDependencyUsingMaven(hilTempDirectoryPath as Path)
+    fun copyHilDependencyUsingMaven(): LocalBuildResult = sessionContext.copyHilDependencyUsingMaven(hilTempDirectoryPath as Path)
 
     fun createHilUploadZip(selectedVersion: String) = sessionContext.createZipForHilUpload(
         hilTempDirectoryPath as Path,
@@ -144,13 +144,13 @@ class CodeModernizerSession(
      *
      *  Based on [CodeWhispererCodeScanSession]
      */
-    fun createModernizationJob(copyResult: MavenCopyCommandsResult): CodeModernizerStartJobResult {
+    fun createModernizationJob(localBuildResult: LocalBuildResult): CodeModernizerStartJobResult {
+        // local build result must have been successful here
         LOG.info { "Compressing local project" }
         val payload: File?
         var payloadSize = 0
         val startTime = Instant.now()
         var telemetryErrorMessage: String? = null
-        var dependenciesCopied = false
 
         try {
             // Generate zip file
@@ -164,17 +164,10 @@ class CodeModernizerSession(
                 telemetryErrorMessage = "Disposed when about to create zip"
                 return CodeModernizerStartJobResult.Disposed
             }
-            val result = sessionContext.createZipWithModuleFiles(copyResult)
+            val result = sessionContext.createZipWithModuleFiles(localBuildResult)
 
-            if (result is ZipCreationResult.Missing1P) {
-                telemetryErrorMessage = "Missing 1p dependencies"
-                return CodeModernizerStartJobResult.CancelledMissingDependencies
-            } else {
-                dependenciesCopied = true
-            }
-
-            payload = result.payload
-            payloadSize = payload.length().toInt()
+            payload = result.payload // must be non-null here
+            payloadSize = payload!!.length().toInt()
 
             // TODO: deprecated metric - remove after BI started using new metric
             telemetry.jobCreateZipEndTime(payloadSize, startTime)
@@ -197,7 +190,7 @@ class CodeModernizerSession(
         } finally {
             // Publish metric if uploadProject failed at the zipping step, since the process will return early.
             if (!telemetryErrorMessage.isNullOrEmpty()) {
-                telemetry.uploadProject(payloadSize, startTime, dependenciesCopied, telemetryErrorMessage)
+                telemetry.uploadProject(payloadSize, startTime, true, telemetryErrorMessage)
             }
         }
 

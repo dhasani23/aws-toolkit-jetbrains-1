@@ -13,11 +13,13 @@ interface InboundAppMessagesHandler {
 
     suspend fun processCodeTransformStartAction(message: IncomingCodeTransformMessage.CodeTransformStart)
 
+    suspend fun processCodeTransformConfirmBuildSystem(message: IncomingCodeTransformMessage.CodeTransformConfirmBuildSystem)
+
     suspend fun processCodeTransformStopAction(tabId: String)
 
     suspend fun processCodeTransformOpenTransformHub(message: IncomingCodeTransformMessage.CodeTransformOpenTransformHub)
 
-    suspend fun processCodeTransformOpenMvnBuild(message: IncomingCodeTransformMessage.CodeTransformOpenMvnBuild)
+    suspend fun processCodeTransformOpenLocalBuild(message: IncomingCodeTransformMessage.CodeTransformOpenLocalBuild)
 
     suspend fun processCodeTransformViewDiff(message: IncomingCodeTransformMessage.CodeTransformViewDiff)
 

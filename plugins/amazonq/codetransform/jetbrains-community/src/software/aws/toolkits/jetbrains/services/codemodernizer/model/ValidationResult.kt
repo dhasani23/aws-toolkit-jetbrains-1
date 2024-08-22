@@ -12,6 +12,4 @@ data class ValidationResult(
     val invalidTelemetryReason: InvalidTelemetryReason = InvalidTelemetryReason(),
     val validatedBuildFiles: List<VirtualFile> = emptyList(),
     val validatedProjectJdkName: String = "",
-    val buildSystem: CodeTransformBuildSystem = CodeTransformBuildSystem.Unknown,
-    val buildSystemVersion: String = ""
 )
