@@ -152,7 +152,6 @@ class CodeTransformChatApp : AmazonQApp {
     }
 
     private suspend fun handleMessage(message: AmazonQMessage, inboundAppMessagesHandler: InboundAppMessagesHandler) {
-        notifyStickyInfo("message info", "message = $message")
         when (message) {
             is IncomingCodeTransformMessage.Transform -> inboundAppMessagesHandler.processTransformQuickAction(message)
             is IncomingCodeTransformMessage.CodeTransformStart -> inboundAppMessagesHandler.processCodeTransformStartAction(message)

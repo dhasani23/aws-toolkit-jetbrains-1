@@ -234,24 +234,18 @@ fun buildUserBuildSystemSelectionChatContent(buildSystem: String) = CodeTransfor
     message = getUserBuildSystemSelectionFormattedMarkdown(buildSystem)
 )
 
-fun buildUserInputChatContent(project: Project, validationResult: ValidationResult): CodeTransformChatMessageContent {
-    val moduleBuildFiles = validationResult.validatedBuildFiles
-
-    notifyStickyInfo("build files", "validated build files = ${validationResult.validatedBuildFiles}")
-
-    return CodeTransformChatMessageContent(
-        message = message("codemodernizer.chat.form.user_selection.title"),
-        buttons = listOf(
-            confirmUserSelectionButton,
-            cancelUserSelectionButton,
-        ),
-        formItems = listOf(
-            getSelectModuleFormItem(project, moduleBuildFiles),
-            selectTargetVersionFormItem,
-        ),
-        type = CodeTransformChatMessageType.FinalizedAnswer,
-    )
-}
+fun buildUserInputChatContent(project: Project, validationResult: ValidationResult) = CodeTransformChatMessageContent(
+    message = message("codemodernizer.chat.form.user_selection.title"),
+    buttons = listOf(
+        confirmUserSelectionButton,
+        cancelUserSelectionButton,
+    ),
+    formItems = listOf(
+        getSelectModuleFormItem(project, validationResult.validatedBuildFiles),
+        selectTargetVersionFormItem,
+    ),
+    type = CodeTransformChatMessageType.FinalizedAnswer,
+)
 
 fun buildUserCancelledChatContent() = CodeTransformChatMessageContent(
     type = CodeTransformChatMessageType.FinalizedAnswer,

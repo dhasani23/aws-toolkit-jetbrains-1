@@ -261,13 +261,10 @@ class CodeTransformChatController(
 
         val sourceJdk = getSourceJdk(moduleConfigurationFile)
 
-        notifyStickyWarn("Build File", "moduleConfigurationFile = ${moduleConfigurationFile.path}")
-
         // (rare) if a module has both a pom.xml and a build.gradle / build.gradle.kts, just the pom.xml will be detected up until here
         // so, check if a build.gradle / build.gradle.kts is present next to the pom.xml, and if so, ask the user what build system to use
         if (moduleConfigurationFile.name == MAVEN_CONFIGURATION_FILE_NAME &&
             moduleConfigurationFile.parent.children.any { it.name == "build.gradle" || it.name == "build.gradle.kts" }) {
-            notifyStickyInfo("Maven & Gradle found", "This project has a pom.xml and a build.gradle / build.gradle.kts")
             codeTransformChatHelper.addNewMessage(buildUserInputBuildSystemChatContent())
             return
         }

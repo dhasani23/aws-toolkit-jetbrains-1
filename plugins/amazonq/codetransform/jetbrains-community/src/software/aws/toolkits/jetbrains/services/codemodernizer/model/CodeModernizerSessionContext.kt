@@ -34,6 +34,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.toolwindow.CodeMo
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilArtifactPomFolder
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilDependenciesRootDir
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilUploadZip
+import software.aws.toolkits.jetbrains.utils.notifyStickyInfo
 import software.aws.toolkits.resources.message
 import java.io.File
 import java.io.IOException
@@ -41,6 +42,7 @@ import java.nio.file.FileVisitOption
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.zip.ZipOutputStream
@@ -156,15 +158,16 @@ data class CodeModernizerSessionContext(
         }
     }
 
+    // TODO: figure out why this isn't working
     private fun runGradleScript(sourceFolder: File, buildLogBuilder: StringBuilder, logger: Logger, project: Project): LocalBuildResult {
         val pythonExecutable = getPythonExecutable() ?: return LocalBuildResult.Failure("Python not found")
         val gradleWrapperExists = checkAndCreateGradleWrapper(sourceFolder)
         if (!gradleWrapperExists) {
             return LocalBuildResult.Failure("Gradle wrapper could not be created")
         }
-        val scriptPath = "/pythonScript/gradle_copy_deps.py" // AwsToolkit.PLUGINS_INFO.getValue(AwsPlugin.Q).path?.resolve("codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py")
-        // TO-DO: evaluate if withWorkDirectory is needed here, and whether to use path or absolutePath
-        val commandLine = GeneralCommandLine("$pythonExecutable $scriptPath ${sourceFolder.path}")
+        val scriptPath = Paths.get("plugins/amazonq/codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/model/gradle_copy_deps.py").toAbsolutePath().toString() // AwsToolkit.PLUGINS_INFO.getValue(AwsPlugin.Q).path?.resolve("codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py")
+        // TODO: evaluate if withWorkDirectory is needed here, and whether to use path or absolutePath
+        val commandLine = GeneralCommandLine("$pythonExecutable $scriptPath ${sourceFolder.path}").withWorkDirectory(sourceFolder)
         try {
             val processOutput = ExecUtil.execAndGetOutput(commandLine)
             LOG.warn { "gradle_copy_deps.py finished with exitCode = ${processOutput.exitCode} and output = ${processOutput.stdout}\n${processOutput.stderr}" }
@@ -302,10 +305,10 @@ data class CodeModernizerSessionContext(
                 val outputFile = createTemporaryZipFile { zip ->
                     // 1) Manifest file
                     val dependenciesRoot = "$ZIP_DEPENDENCIES_PATH/${depDirectory?.name}"
-                    // TO-DO: fix backend issue where this needs to be equalsIgnoreCase: https://code.amazon.com/packages/ElasticGumbyCodeGenAgent/blobs/e4002a60a410da75c55aad1279a314204919bd80/--/src/main/java/com/amazonaws/elasticgumby/codegen/build/inference/FileBasedBuildSystemInference.java#L62
-                    // then the below "GRADLE" can just be "Gradle"
-                    val buildTool = if (configurationFile.name == MAVEN_CONFIGURATION_FILE_NAME) "Maven" else "GRADLE"
-                    mapper.writeValueAsString(ZipManifest(dependenciesRoot = dependenciesRoot, buildTool = buildTool))
+                    // TODO: fix backend issue where this needs to be equalsIgnoreCase: FileBasedBuildSystemInference.java#L62
+                    val buildTool = if (configurationFile.name == MAVEN_CONFIGURATION_FILE_NAME) MAVEN_BUILD_SYSTEM else GRADLE_BUILD_SYSTEM
+                    // buildTool needs to be uppercase for backend until we use equalsIgnoreCase
+                    mapper.writeValueAsString(ZipManifest(dependenciesRoot = dependenciesRoot, buildTool = buildTool.uppercase()))
                         .byteInputStream()
                         .use {
                             zip.putNextEntry(Path(MANIFEST_PATH).toString(), it)
