@@ -8,6 +8,7 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.util.ExecUtil
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.JavaSdkVersion
 import com.intellij.openapi.util.SystemInfo
@@ -165,6 +166,8 @@ data class CodeModernizerSessionContext(
         if (!gradleWrapperExists) {
             return LocalBuildResult.Failure("Gradle wrapper could not be created")
         }
+//        val pluginId = PluginId.getId("aws.toolkit") // Replace with your plugin ID
+//        val scriptPath = getResourceFile("/scripts/build/transformByQ/gradle_copy_deps.py", pluginId)?.absolutePath
         val scriptPath = Paths.get("plugins/amazonq/codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/model/gradle_copy_deps.py").toAbsolutePath().toString() // AwsToolkit.PLUGINS_INFO.getValue(AwsPlugin.Q).path?.resolve("codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py")
         // TODO: evaluate if withWorkDirectory is needed here, and whether to use path or absolutePath
         val commandLine = GeneralCommandLine("$pythonExecutable $scriptPath ${sourceFolder.path}").withWorkDirectory(sourceFolder)

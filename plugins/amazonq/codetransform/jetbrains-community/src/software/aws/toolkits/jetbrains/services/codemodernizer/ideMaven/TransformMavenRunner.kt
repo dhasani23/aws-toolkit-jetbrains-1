@@ -19,6 +19,7 @@ class TransformMavenRunner(val project: Project) {
 
     fun run(parameters: MavenRunnerParameters, settings: MavenRunnerSettings, onComplete: TransformRunnable) {
         FileDocumentManager.getInstance().saveAllDocuments()
+        // settings.environmentProperties["JAVA_HOME"] = "/path/to/jdk17" // TODO: test this
         val callback = ProgramRunner.Callback { descriptor: RunContentDescriptor ->
             val handler = descriptor.processHandler
             if (handler == null) {
