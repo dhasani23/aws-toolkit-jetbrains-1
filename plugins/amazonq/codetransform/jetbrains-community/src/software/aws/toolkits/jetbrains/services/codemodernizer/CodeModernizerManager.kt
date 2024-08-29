@@ -182,8 +182,6 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
                     true,
                     validatedBuildFiles = validatedBuildFiles,
                     validatedProjectJdkName = projectJdk?.description.orEmpty(),
-                    // TO-DO: maybe add back the other two fields of ValidationResult
-                    // probably not since user has not selected a project at this point
                 )
             } else {
                 ValidationResult(
@@ -193,8 +191,7 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
                         supportedBuildFileNames.joinToString()
                     ),
                     invalidTelemetryReason = InvalidTelemetryReason(
-                        // TO-DO: make this NonMavenGradleProject?
-                        CodeTransformPreValidationError.NonMavenProject,
+                        CodeTransformPreValidationError.UnsupportedBuildSystem,
                         if (isGradleProject(project)) "Gradle build" else "other build"
                     ),
                 )
@@ -202,9 +199,6 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
         }
 
         val result = validateCore(project)
-
-        // TODO: deprecated metric - remove after BI started using new metric
-        telemetry.sendValidationResult(result)
 
         telemetry.validateProject(result)
 
@@ -382,9 +376,6 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
     }
 
     fun runLocalBuild(project: Project, customerSelection: CustomerSelection) {
-        // TODO: deprecated metric - remove after BI started using new metric
-        telemetry.jobStartedCompleteFromPopupDialog(customerSelection)
-
         // Create and set a session
         codeTransformationSession = null
         val session = createCodeModernizerSession(customerSelection, project)

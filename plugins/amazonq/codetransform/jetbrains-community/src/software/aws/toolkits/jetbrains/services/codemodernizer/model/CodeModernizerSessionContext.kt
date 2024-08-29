@@ -159,16 +159,14 @@ data class CodeModernizerSessionContext(
         }
     }
 
-    // TODO: figure out why this isn't working
+    // TODO: figure out why this isn't working i.e. not running the script with a FileNotFound error
     private fun runGradleScript(sourceFolder: File, buildLogBuilder: StringBuilder, logger: Logger, project: Project): LocalBuildResult {
         val pythonExecutable = getPythonExecutable() ?: return LocalBuildResult.Failure("Python not found")
         val gradleWrapperExists = checkAndCreateGradleWrapper(sourceFolder)
         if (!gradleWrapperExists) {
             return LocalBuildResult.Failure("Gradle wrapper could not be created")
         }
-//        val pluginId = PluginId.getId("aws.toolkit") // Replace with your plugin ID
-//        val scriptPath = getResourceFile("/scripts/build/transformByQ/gradle_copy_deps.py", pluginId)?.absolutePath
-        val scriptPath = Paths.get("plugins/amazonq/codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/model/gradle_copy_deps.py").toAbsolutePath().toString() // AwsToolkit.PLUGINS_INFO.getValue(AwsPlugin.Q).path?.resolve("codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/utils/gradle_copy_deps.py")
+        val scriptPath = Paths.get("plugins/amazonq/codetransform/jetbrains-community/src/software/aws/toolkits/jetbrains/services/codemodernizer/model/gradle_copy_deps.py").toAbsolutePath().toString()
         // TODO: evaluate if withWorkDirectory is needed here, and whether to use path or absolutePath
         val commandLine = GeneralCommandLine("$pythonExecutable $scriptPath ${sourceFolder.path}").withWorkDirectory(sourceFolder)
         try {
