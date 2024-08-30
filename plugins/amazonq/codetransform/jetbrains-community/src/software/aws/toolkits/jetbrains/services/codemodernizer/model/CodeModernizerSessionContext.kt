@@ -15,6 +15,7 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
+import org.apache.commons.io.FileUtils
 import org.slf4j.Logger
 import software.aws.toolkits.core.utils.createTemporaryZipFile
 import software.aws.toolkits.core.utils.error
@@ -181,6 +182,15 @@ data class CodeModernizerSessionContext(
         } catch (e: Exception) {
             e.printStackTrace()
             return LocalBuildResult.Failure("gradle_copy_deps.py failed")
+        } finally {
+            try {
+                val qctGradleFolderPath = Paths.get(sourceFolder.path, "qct-gradle")
+                if (Files.exists(qctGradleFolderPath)) {
+                    qctGradleFolderPath.toFile().deleteRecursively()
+                }
+            } catch (e: Exception) {
+                // do nothing. sometimes deleting the qct-gradle folder fails due to .lock files, so just move on.
+            }
         }
         // We don't use a separate dependency folder for Gradle apps
         return LocalBuildResult.Success(null)
