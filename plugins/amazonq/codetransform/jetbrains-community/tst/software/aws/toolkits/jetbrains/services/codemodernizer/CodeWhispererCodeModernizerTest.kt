@@ -29,10 +29,13 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.InvalidTele
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.ParseZipFailureReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.ValidationResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.filterOnlyParentFiles
+import software.aws.toolkits.jetbrains.services.codemodernizer.utils.findBuildFiles
+import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getSupportedBuildFileNames
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.unzipFile
 import software.aws.toolkits.resources.message
 import software.aws.toolkits.telemetry.CodeTransformPreValidationError
 import software.aws.toolkits.telemetry.CodeTransformVCSViewerSrcComponents
+import java.io.File
 import kotlin.io.path.Path
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
@@ -216,5 +219,16 @@ class CodeWhispererCodeModernizerTest : CodeWhispererCodeModernizerTestBase() {
             )
         )
         assertEquals(expectedResult, result)
+    }
+
+    @Test
+    fun `accept projects with a gradle build file`() {
+        val projectRoot = File(project.basePath)
+        val buildGradlePath = File(projectRoot, "build.gradle")
+        buildGradlePath.writeText("sample build.gradle content")
+        val actual = findBuildFiles(File(project.basePath), getSupportedBuildFileNames()).map { file -> file.name }
+        buildGradlePath.delete()
+        val expected = listOf("build.gradle")
+        assertEquals(expected, actual)
     }
 }

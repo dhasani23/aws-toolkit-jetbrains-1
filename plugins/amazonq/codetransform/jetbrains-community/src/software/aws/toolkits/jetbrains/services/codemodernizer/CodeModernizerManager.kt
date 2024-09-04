@@ -65,6 +65,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getModuleOr
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilArtifactPomFile
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilDependencyReport
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getPathToHilDependencyReportDir
+import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getSupportedBuildFileNames
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getSupportedBuildFilesWithSupportedJdk
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getSupportedJavaMappings
 import software.aws.toolkits.jetbrains.services.codemodernizer.utils.getSupportedModules
@@ -107,7 +108,7 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
             Disposer.register(contentManager, it)
         }
     }
-    private val supportedBuildFileNames = listOf(MAVEN_CONFIGURATION_FILE_NAME, GRADLE_CONFIGURATION_FILE_NAME, GRADLE_KTS_CONFIGURATION_FILE_NAME)
+
     private val isModernizationInProgress = AtomicBoolean(false)
     private val isResumingJob = AtomicBoolean(false)
     private val isLocalBuildRunning = AtomicBoolean(false)
@@ -176,6 +177,7 @@ class CodeModernizerManager(private val project: Project) : PersistentStateCompo
                     )
                 )
             }
+            val supportedBuildFileNames = getSupportedBuildFileNames()
             val validatedBuildFiles = project.getSupportedBuildFilesWithSupportedJdk(supportedBuildFileNames, supportedJavaMappings)
             return if (validatedBuildFiles.isNotEmpty()) {
                 ValidationResult(

@@ -3,17 +3,13 @@
 
 package software.aws.toolkits.jetbrains.services.codemodernizer.model
 
-import com.intellij.openapi.project.Project
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileWriter
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.util.regex.Pattern
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+// this is a potential way to convert the Python script to a Gradle script, have NOT reviewed / tested it
 val useOfflineDependency = """
 final addDownloadedDependenciesRepository(rooted, receiver) {
   receiver.repositories.maven {

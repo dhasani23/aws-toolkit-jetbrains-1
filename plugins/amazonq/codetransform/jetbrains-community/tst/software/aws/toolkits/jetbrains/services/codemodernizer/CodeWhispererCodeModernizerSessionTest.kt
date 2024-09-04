@@ -57,7 +57,7 @@ import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModerni
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModernizerSessionContext
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeModernizerStartJobResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.CodeTransformHilDownloadArtifact
-import software.aws.toolkits.jetbrains.services.codemodernizer.model.MavenCopyCommandsResult
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.LocalBuildResult
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.UploadFailureReason
 import software.aws.toolkits.jetbrains.services.codemodernizer.model.ZipCreationResult
 import software.aws.toolkits.jetbrains.services.codewhisperer.service.CodeWhispererService
@@ -103,7 +103,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         val roots = ModuleRootManager.getInstance(module).contentRoots
         val root = roots[0]
         val context = spy(CodeModernizerSessionContext(project, root.children[0], JavaSdkVersion.JDK_1_8, JavaSdkVersion.JDK_11))
-        val result = spy(MavenCopyCommandsResult.Success(File("")))
+        val result = spy(LocalBuildResult.Success(File("")))
         doReturn(null).`when`(result).dependencyDirectory
         doReturn(result).`when`(context).executeMavenCopyCommands(any(), any())
         runInEdtAndWait {
@@ -123,7 +123,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         val roots = ModuleRootManager.getInstance(module).contentRoots
         val root = roots[0]
         val context = spy(CodeModernizerSessionContext(project, root.children[0], JavaSdkVersion.JDK_1_8, JavaSdkVersion.JDK_11))
-        val result = MavenCopyCommandsResult.Failure
+        val result = LocalBuildResult.Failure("")
         doReturn(result).`when`(context).executeMavenCopyCommands(any(), any())
         runInEdtAndWait {
             context.createZipWithModuleFiles(result).payload
@@ -404,7 +404,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doNothing().whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
         doReturn(exampleStartCodeMigrationResponse).whenever(clientAdaptorSpy).startCodeModernization(any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(result, CodeModernizerStartJobResult.Started(jobId))
         verify(clientAdaptorSpy, times(1)).createGumbyUploadUrl(any())
         verify(clientAdaptorSpy, times(1)).startCodeModernization(any(), any(), any())
@@ -418,7 +418,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
             .whenever(testSessionContextSpy).createZipWithModuleFiles(any())
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doAnswer { throw AlreadyDisposedException("mock exception") }.whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.Disposed, result)
     }
 
@@ -428,7 +428,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         doReturn(ZipCreationResult.Succeeded(File("./tst-resources/codemodernizer/test.txt")))
             .whenever(testSessionContextSpy).createZipWithModuleFiles(any())
         doAnswer { throw SsoOidcException.builder().build() }.whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.CREDENTIALS_EXPIRED), result)
     }
 
@@ -436,7 +436,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
     fun `CodeModernizer returns credentials expired when expired before upload`() {
         listOf(BearerTokenAuthState.NEEDS_REFRESH, BearerTokenAuthState.NOT_AUTHENTICATED).forEach {
             setupConnection(it)
-            val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+            val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
             assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.CREDENTIALS_EXPIRED), result)
         }
     }
@@ -448,7 +448,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doAnswer { throw HttpRequests.HttpStatusException("mock error", 403, "mock url") }
             .whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.PRESIGNED_URL_EXPIRED), result)
         verify(testSessionStateSpy, times(1)).putJobHistory(any(), eq(TransformationStatus.FAILED), any(), any())
         assertEquals(testSessionStateSpy.currentJobStatus, TransformationStatus.FAILED)
@@ -461,7 +461,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doAnswer { throw HttpRequests.HttpStatusException("mock error", 407, "mock url") }
             .whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.HTTP_ERROR(407)), result)
         verify(testSessionStateSpy, times(1)).putJobHistory(any(), eq(TransformationStatus.FAILED), any(), any())
         assertEquals(testSessionStateSpy.currentJobStatus, TransformationStatus.FAILED)
@@ -473,7 +473,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
             .whenever(testSessionContextSpy).createZipWithModuleFiles(any())
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doAnswer { throw IOException("mock exception") }.whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.OTHER("mock exception")), result)
         verify(testSessionStateSpy, times(1)).putJobHistory(any(), eq(TransformationStatus.FAILED), any(), any())
         assertEquals(testSessionStateSpy.currentJobStatus, TransformationStatus.FAILED)
@@ -485,7 +485,7 @@ class CodeWhispererCodeModernizerSessionTest : CodeWhispererCodeModernizerTestBa
             .whenever(testSessionContextSpy).createZipWithModuleFiles(any())
         doReturn(exampleCreateUploadUrlResponse).whenever(clientAdaptorSpy).createGumbyUploadUrl(any())
         doAnswer { throw ConnectException("mock exception") }.whenever(clientAdaptorSpy).uploadArtifactToS3(any(), any(), any(), any(), any())
-        val result = testSessionSpy.createModernizationJob(MavenCopyCommandsResult.Success(File("./mock/path/")))
+        val result = testSessionSpy.createModernizationJob(LocalBuildResult.Success(File("./mock/path/")))
         assertEquals(CodeModernizerStartJobResult.ZipUploadFailed(UploadFailureReason.CONNECTION_REFUSED), result)
         verify(testSessionStateSpy, times(1)).putJobHistory(any(), eq(TransformationStatus.FAILED), any(), any())
         assertEquals(testSessionStateSpy.currentJobStatus, TransformationStatus.FAILED)

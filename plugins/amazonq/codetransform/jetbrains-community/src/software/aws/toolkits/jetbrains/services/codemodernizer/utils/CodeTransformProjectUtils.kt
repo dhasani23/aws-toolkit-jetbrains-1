@@ -12,6 +12,14 @@ import com.intellij.openapi.projectRoots.impl.JavaSdkImpl
 import com.intellij.openapi.roots.LanguageLevelProjectExtension
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_CONFIGURATION_FILE_NAME
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.GRADLE_KTS_CONFIGURATION_FILE_NAME
+import software.aws.toolkits.jetbrains.services.codemodernizer.model.MAVEN_CONFIGURATION_FILE_NAME
+
+// supporting pom.xml, build.gradle, and build.gradle.kts
+fun getSupportedBuildFileNames(): List<String> {
+    return listOf(MAVEN_CONFIGURATION_FILE_NAME, GRADLE_CONFIGURATION_FILE_NAME, GRADLE_KTS_CONFIGURATION_FILE_NAME)
+}
 
 /**
  * @description Try to get the project SDK version from the "project structure" settings
@@ -40,7 +48,7 @@ fun Project.tryGetJdkLanguageLevelJdk(): JavaSdkVersion? {
 fun Project.getSupportedJavaMappings(supportedJavaMappings: Map<JavaSdkVersion, Set<JavaSdkVersion>>): List<String> =
     supportedJavaMappings.getOrDefault(this.tryGetJdk(), listOf()).map { it.name }.toList()
 
-private fun Project.getAllSupportedBuildFiles(supportedBuildFileNames: List<String>): List<VirtualFile> {
+fun Project.getAllSupportedBuildFiles(supportedBuildFileNames: List<String>): List<VirtualFile> {
     /**
      * Strategy:
      * 1. Find folders with pom.xml or build.gradle.kts or build.gradle

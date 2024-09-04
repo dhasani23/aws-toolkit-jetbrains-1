@@ -84,8 +84,7 @@ data class CodeModernizerSessionContext(
     }
 
     fun File.isGradleBuildFolder(): Boolean {
-        // TO-DO: maybe remove hasGradleSibling?
-        // print out the ZIP path and make sure everything is being excluded
+        // TODO: print out the ZIP path and make sure everything is being excluded
         val hasGradleSibling = this.resolveSibling(GRADLE_CONFIGURATION_FILE_NAME).exists() || this.resolveSibling(GRADLE_KTS_CONFIGURATION_FILE_NAME).exists()
         val isGradleFolder = this.isDirectory && this.name in GRADLE_BUILD_DIRECTORY_NAMES
         return isGradleFolder && hasGradleSibling
