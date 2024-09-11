@@ -4,13 +4,18 @@
 package software.aws.toolkits.jetbrains.services.codemodernizer
 
 import com.intellij.notification.NotificationAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.diff.impl.patch.PatchReader
+import com.intellij.openapi.diff.impl.patch.formove.PatchApplier
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.patch.ApplyPatchDefaultExecutor
 import com.intellij.openapi.vcs.changes.patch.ApplyPatchDifferentiatedDialog
+import com.intellij.openapi.vcs.changes.patch.ApplyPatchExecutor
 import com.intellij.openapi.vcs.changes.patch.ApplyPatchMode
 import com.intellij.openapi.vcs.changes.patch.ImportToShelfExecutor
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -70,6 +75,7 @@ class ArtifactHandler(private val project: Project, private val clientAdaptor: G
             is DownloadArtifactResult.Success -> {
                 if (result.artifact !is CodeModernizerArtifact) return notifyUnableToApplyPatch("")
                 displayDiffUsingPatch(result.artifact.patch, job, source)
+                // TODO: look at this: applyDiffUsingPatch(result.artifact.patch, project)
             }
             is DownloadArtifactResult.ParseZipFailure -> notifyUnableToApplyPatch(result.failureReason.errorMessage)
             is DownloadArtifactResult.UnzipFailure -> notifyUnableToApplyPatch(result.failureReason.errorMessage)
@@ -236,6 +242,22 @@ class ArtifactHandler(private val project: Project, private val clientAdaptor: G
             }
         } finally {
             isCurrentlyDownloading.set(false)
+        }
+    }
+
+    private fun applyDiffUsingPatch(patchFile: VirtualFile, project: Project) {
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val patchReader = PatchReader(Path.of(patchFile.path))
+                patchReader.parseAllPatches()
+                val patches = patchReader.allPatches
+                val applier = PatchApplier(project, project.baseDir, patches, null, null)
+                // TODO: experiment with these parameters
+                applier.execute(true, false)
+            } catch (e: Exception) {
+                // TODO: handle this
+                notifyStickyInfo("error applying patch", e.message.toString())
+            }
         }
     }
 

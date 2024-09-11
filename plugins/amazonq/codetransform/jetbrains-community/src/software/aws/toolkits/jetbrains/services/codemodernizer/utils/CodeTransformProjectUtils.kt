@@ -11,7 +11,12 @@ import com.intellij.openapi.projectRoots.JavaSdkVersion
 import com.intellij.openapi.projectRoots.impl.JavaSdkImpl
 import com.intellij.openapi.roots.LanguageLevelProjectExtension
 import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.VirtualFile
+import git4idea.GitVcs
+
+fun isGitUsed(project: Project): Boolean =
+    ProjectLevelVcsManager.getInstance(project).findVcsByName(GitVcs.NAME) != null
 
 /**
  * @description Try to get the project SDK version from the "project structure" settings
