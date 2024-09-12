@@ -33,7 +33,8 @@ data class PollingResult(
     val succeeded: Boolean,
     val jobDetails: TransformationJob?,
     val state: TransformationStatus,
-    val transformationPlan: TransformationPlan?
+    val transformationPlan: TransformationPlan?,
+    val customErrorReason: String? = null
 )
 
 /**
@@ -101,6 +102,15 @@ suspend fun JobId.pollTransformationStatusAndPlan(
                 }
                 state = newStatus
                 numRefreshes = 0
+                val isBuildTimedOut = transformationPlan?.transformationSteps()?.any { step ->
+                    step.progressUpdates().any { update ->
+                        update.statusAsString() == "BUILD_TIMED_OUT"
+                    }
+                } ?: false
+                if (isBuildTimedOut) {
+                    transformationResponse?.transformationJob()?.jobId()?.let { clientAdaptor.stopTransformation(it) }
+                    return@waitUntil PollingResult(false, transformationResponse?.transformationJob(), TransformationStatus.FAILED, transformationPlan, message("codemodernizer.build_timed_out.message"))
+                }
                 return@waitUntil state
             } catch (e: AccessDeniedException) {
                 if (numRefreshes++ > maxRefreshes) throw e

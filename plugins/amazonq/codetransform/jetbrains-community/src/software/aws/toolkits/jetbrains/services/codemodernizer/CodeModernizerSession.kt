@@ -518,7 +518,7 @@ class CodeModernizerSession(
                             return CodeModernizerJobCompletedResult.JobFailedInitialBuild(jobId, failureReason, false)
                         }
                     } else {
-                        val failureReason = result.jobDetails?.reason() ?: message("codemodernizer.notification.warn.unknown_status_response")
+                        val failureReason = result.customErrorReason ?: result.jobDetails?.reason() ?: message("codemodernizer.notification.warn.unknown_status_response")
                         return CodeModernizerJobCompletedResult.JobFailed(jobId, failureReason)
                     }
                 }
